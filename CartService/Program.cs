@@ -1,59 +1,40 @@
-using Microsoft.Extensions.DependencyInjection;
 using Polly;
-using Polly.Extensions.Http;
-using Microsoft.Extensions.Http;
+using CartService.Data;
+using Microsoft.EntityFrameworkCore; 
+using Npgsql.EntityFrameworkCore.PostgreSQL;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+builder.Services.AddControllers();
+builder.Services.AddDbContext<CartContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Add HttpClient for ProductClient with Polly policies
 builder.Services.AddHttpClient<ProductClient>(client =>
 {
-    client.BaseAddress = new Uri("http://localhost:5001"); // Change this to your ProductService's URL
+    client.BaseAddress = new Uri("http://localhost:5001"); 
 })
 .AddTransientHttpErrorPolicy(policy => 
-    policy.WaitAndRetryAsync(3, _ => TimeSpan.FromMilliseconds(300))) // Retry policy
+    policy.WaitAndRetryAsync(3, _ => TimeSpan.FromMilliseconds(300)))
 .AddTransientHttpErrorPolicy(policy => 
-    policy.CircuitBreakerAsync(5, TimeSpan.FromSeconds(30))); // Circuit breaker policy
+    policy.CircuitBreakerAsync(5, TimeSpan.FromSeconds(30)));
+
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Product Service API V1");
+        c.RoutePrefix = string.Empty;
+    });
 }
 
 app.UseHttpsRedirection();
-
-// Example endpoint: Weather forecast
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast = Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast")
-.WithOpenApi();
+app.MapControllers();
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
